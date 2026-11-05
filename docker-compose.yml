@@ -1,0 +1,76 @@
+# Chocolate Factory — backend
+#
+# Bir serverda boshqa loyihalar bilan yonma-yon ishlashi uchun:
+# - loyiha nomi qat'iy: "chocolate" (konteynerlar chocolate-db-1, chocolate-api-1;
+#   tarmoq chocolate_default; volume chocolate_pgdata) — boshqa loyihalar bilan aralashmaydi;
+# - portlar faqat 127.0.0.1 ga ochiladi va band bo'lmagan raqamlarda (8020, 5442);
+# - konteyner nomi (container_name) qo'yilmagan — nom to'qnashuvi bo'lmaydi;
+# - xotira chegarasi va log hajmi cheklangan — server resursini boshqalardan tortib olmaydi.
+
+name: chocolate
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-app: &app
+  build: .
+  image: chocolate-api:local
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-chocolate}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-chocolate}
+  logging: *default-logging
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-chocolate}
+      POSTGRES_USER: ${POSTGRES_USER:-chocolate}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required in .env}
+      TZ: UTC
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Faqat shu kompyuterdan ulanish uchun (PyCharm, psql, lokal uvicorn)
+    ports:
+      - "127.0.0.1:${DB_HOST_PORT:-5442}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging: *default-logging
+
+  # Migratsiyalar alohida, bir marta ishlaydi va tugaydi (Exited 0 — bu normal holat)
+  migrate:
+    <<: *app
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${API_HOST_PORT:-8020}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+volumes:
+  pgdata:

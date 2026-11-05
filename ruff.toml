@@ -1,0 +1,15 @@
+line-length = 120
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "I", "B", "UP", "S", "SIM"]
+# B008: FastAPI Depends() parametr sukutida — bu framework uslubi
+ignore = ["B008", "S101"]
+
+[lint.per-file-ignores]
+"scripts/*" = ["S"]
+"alembic/*" = ["E501"]
+# S105: xato kodlari va token turi nomlari parol emas
+"translations.py" = ["S105"]
+"schemas/auth.py" = ["S105"]
+"auth/oauth2.py" = ["S105"]
